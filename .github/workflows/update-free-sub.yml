@@ -68,7 +68,6 @@ jobs:
             seen.add(line)
 
             low = line.lower()
-            # VLESS is only useful to us here when it is REALITY.
             if low.startswith('vless://') and 'security=reality' not in low:
               continue
 
@@ -85,13 +84,11 @@ jobs:
             candidates.append((score, tie, line))
 
           candidates.sort(key=lambda x: (-x[0], x[1]))
-          # 300 is large enough for variety but small enough for Shadowrocket
-          # CONNECT testing without turning the app into a phone heater.
           selected = [line for _, _, line in candidates[:300]]
           if len(selected) < 50:
             raise SystemExit(f'Only {len(selected)} usable modern candidates')
 
-          Path('output/sub.txt').write_text('\n'.join(selected) + '\n')
+          Path('output/asia-sub.txt').write_text('\n'.join(selected) + '\n')
           asia = sum(bool(region.search(x)) for x in selected)
           proto = {}
           for x in selected:
@@ -100,20 +97,20 @@ jobs:
           print(f'Published {len(selected)} shortlisted nodes; Asia-labelled={asia}; protocols={proto}')
           PY
 
-          test -s output/sub.txt
-          count=$(wc -l < output/sub.txt)
+          test -s output/asia-sub.txt
+          count=$(wc -l < output/asia-sub.txt)
           test "$count" -ge 50
           test "$count" -le 300
 
       - name: Commit only when changed
         shell: bash
         run: |
-          if [ -z "$(git status --porcelain -- output/sub.txt)" ]; then
+          if [ -z "$(git status --porcelain -- output/asia-sub.txt)" ]; then
             echo 'No change.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add output/sub.txt
+          git add output/asia-sub.txt
           git commit -m 'chore: refresh Asia-first Shadowrocket shortlist'
           git push
