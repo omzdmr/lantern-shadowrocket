@@ -18,26 +18,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build traffic-verified modern subscription
+      - name: Build verified modern subscription
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p output tmp
 
-          # Prefer modern protocols from a catalog that actually dials nodes
-          # before publishing them. Fall back between feeds independently.
+          # These are config bundles, not the subs/all.txt source-link catalog.
           sources=(
             'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/reality.txt'
             'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/hysteria2.txt'
             'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/tuic.txt'
             'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/trojan.txt'
+            'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/hysteria2.txt'
+            'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/vless.txt'
+            'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/trojan.txt'
           )
 
           : > tmp/all.txt
           ok=0
-          for url in "${sources[@]}"; do
-            f="tmp/src-$ok.txt"
-            if curl --fail --location --retry 3 --connect-timeout 15 --max-time 60 "$url" -o "$f" && test -s "$f"; then
+          for i in "${!sources[@]}"; do
+            url="${sources[$i]}"
+            f="tmp/src-$i.txt"
+            if curl --fail --location --retry 2 --connect-timeout 15 --max-time 90 "$url" -o "$f" && test -s "$f"; then
               cat "$f" >> tmp/all.txt
               printf '\n' >> tmp/all.txt
               ok=$((ok+1))
@@ -45,16 +48,16 @@ jobs:
           done
           test "$ok" -ge 2
 
-          # Keep only URI schemes Shadowrocket can import from this feed,
-          # remove blank/comment lines and exact duplicates. Avoid VMess/CF
-          # noise that produced false-positive TCP pings in the first version.
-          grep -E '^(vless|hysteria2|hy2|tuic|trojan)://' tmp/all.txt \
+          # Preserve only raw proxy URIs Shadowrocket can import.
+          grep -aE '^(vless|hysteria2|hy2|tuic|trojan)://' tmp/all.txt \
             | sed '/^[[:space:]]*$/d' \
             | awk '!seen[$0]++' \
             > output/sub.txt
 
-          test -s output/sub.txt
-          echo "Published $(wc -l < output/sub.txt) modern candidates from $ok feeds."
+          count=$(wc -l < output/sub.txt)
+          echo "Published $count candidates from $ok feeds."
+          # A green workflow with an empty/tiny subscription is a failure.
+          test "$count" -ge 20
 
       - name: Commit only when changed
         shell: bash
