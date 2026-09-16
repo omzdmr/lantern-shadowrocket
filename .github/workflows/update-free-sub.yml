@@ -1,6 +1,10 @@
 name: Update free Shadowrocket subscription
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-free-sub.yml'
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -14,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch and normalize public subscription
+      - name: Fetch public subscription
         shell: bash
         run: |
           set -euo pipefail
