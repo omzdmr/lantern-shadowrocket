@@ -61,7 +61,7 @@ jobs:
           seen = set()
           ranked = []
           for line in raw:
-            line = line.strip()
+            line = line.strip().replace('&amp;', '&')
             if not line.startswith(allowed) or line in seen:
               continue
             if '{' in line or '}' in line or len(line) > 4096:
@@ -80,14 +80,9 @@ jobs:
             frag = unquote(line.rsplit('#', 1)[1]) if '#' in line else ''
             region_text = f'{host} {frag}'
 
-            # Only trust endpoint hostname + display label for geography.
-            # Query/SNI values are deliberately ignored because they often
-            # contain Hong Kong domains even when the server is in Europe.
             is_target = bool(target.search(region_text))
             is_us = bool(us.search(region_text))
-            if not is_target:
-              continue
-            if is_us:
+            if not is_target or is_us:
               continue
 
             score = 100
