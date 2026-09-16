@@ -40,3 +40,5 @@ jobs:
           git add output/sub.txt
           git commit -m 'chore: refresh free subscription'
           git push
+
+# workflow revision: 2
