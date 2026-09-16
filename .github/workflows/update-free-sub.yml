@@ -18,15 +18,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch public subscription
+      - name: Build traffic-verified modern subscription
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p output
-          curl --fail --location --retry 3 --connect-timeout 15 \
-            'https://raw.githubusercontent.com/XSVPN/Pawdroid-Free-servers/main/sub' \
-            -o output/sub.txt
+          mkdir -p output tmp
+
+          # Prefer modern protocols from a catalog that actually dials nodes
+          # before publishing them. Fall back between feeds independently.
+          sources=(
+            'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/reality.txt'
+            'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/hysteria2.txt'
+            'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/tuic.txt'
+            'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/trojan.txt'
+          )
+
+          : > tmp/all.txt
+          ok=0
+          for url in "${sources[@]}"; do
+            f="tmp/src-$ok.txt"
+            if curl --fail --location --retry 3 --connect-timeout 15 --max-time 60 "$url" -o "$f" && test -s "$f"; then
+              cat "$f" >> tmp/all.txt
+              printf '\n' >> tmp/all.txt
+              ok=$((ok+1))
+            fi
+          done
+          test "$ok" -ge 2
+
+          # Keep only URI schemes Shadowrocket can import from this feed,
+          # remove blank/comment lines and exact duplicates. Avoid VMess/CF
+          # noise that produced false-positive TCP pings in the first version.
+          grep -E '^(vless|hysteria2|hy2|tuic|trojan)://' tmp/all.txt \
+            | sed '/^[[:space:]]*$/d' \
+            | awk '!seen[$0]++' \
+            > output/sub.txt
+
           test -s output/sub.txt
+          echo "Published $(wc -l < output/sub.txt) modern candidates from $ok feeds."
 
       - name: Commit only when changed
         shell: bash
@@ -38,7 +66,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add output/sub.txt
-          git commit -m 'chore: refresh free subscription'
+          git commit -m 'chore: refresh verified modern subscription'
           git push
-
-# workflow revision: 2
