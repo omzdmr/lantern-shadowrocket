@@ -51,14 +51,15 @@ jobs:
           import hashlib
           import re
           from pathlib import Path
+          from urllib.parse import unquote, urlsplit
 
           raw = Path('tmp/all.txt').read_text(errors='ignore').splitlines()
           allowed = ('vless://', 'hysteria2://', 'hy2://', 'tuic://', 'trojan://')
-          region = re.compile(r'(hong.?kong|singapore|japan|tokyo|osaka|seoul|korea|taiwan|taipei|(?:#|%23)(?:hk|sg|jp|kr|tw)(?:\b|%|$)|香港|日本|新加坡|韩国|韓國|台湾|台灣)', re.I)
-          unwanted = re.compile(r'(united.?states|america|los.?angeles|new.?york|dallas|chicago|(?:#|%23)us(?:\b|%|$)|美国|美國)', re.I)
+          target = re.compile(r'(^|[^a-z])(hk|hong\s*kong|jp|japan|tokyo|osaka|sg|singapore|kr|korea|seoul|tw|taiwan|taipei)([^a-z]|$)|香港|日本|新加坡|韩国|韓國|台湾|台灣', re.I)
+          us = re.compile(r'(^|[^a-z])(us|usa|united\s*states|america|los\s*angeles|new\s*york|dallas|chicago)([^a-z]|$)|美国|美國', re.I)
 
           seen = set()
-          candidates = []
+          ranked = []
           for line in raw:
             line = line.strip()
             if not line.startswith(allowed) or line in seen:
@@ -71,46 +72,61 @@ jobs:
             if low.startswith('vless://') and 'security=reality' not in low:
               continue
 
-            score = 0
-            if region.search(line): score += 100
+            try:
+              u = urlsplit(line)
+              host = (u.hostname or '').lower()
+            except Exception:
+              host = ''
+            frag = unquote(line.rsplit('#', 1)[1]) if '#' in line else ''
+            region_text = f'{host} {frag}'
+
+            # Only trust endpoint hostname + display label for geography.
+            # Query/SNI values are deliberately ignored because they often
+            # contain Hong Kong domains even when the server is in Europe.
+            is_target = bool(target.search(region_text))
+            is_us = bool(us.search(region_text))
+            if not is_target:
+              continue
+            if is_us:
+              continue
+
+            score = 100
             if low.startswith(('hysteria2://', 'hy2://')): score += 45
             elif low.startswith('tuic://'): score += 40
             elif low.startswith('vless://') and 'security=reality' in low: score += 35
             elif low.startswith('trojan://') and 'security=reality' in low: score += 30
             elif low.startswith('trojan://'): score += 10
-            if unwanted.search(line): score -= 150
 
             tie = hashlib.sha256(line.encode()).hexdigest()
-            candidates.append((score, tie, line))
+            ranked.append((score, tie, line))
 
-          candidates.sort(key=lambda x: (-x[0], x[1]))
-          selected = [line for _, _, line in candidates[:300]]
+          ranked.sort(key=lambda x: (-x[0], x[1]))
+          selected = [line for _, _, line in ranked[:300]]
           if len(selected) < 50:
-            raise SystemExit(f'Only {len(selected)} usable modern candidates')
+            raise SystemExit(f'Only {len(selected)} target-region modern candidates')
 
-          Path('output/asia-sub.txt').write_text('\n'.join(selected) + '\n')
-          asia = sum(bool(region.search(x)) for x in selected)
+          Path('output/asia-v2.txt').write_text('\n'.join(selected) + '\n')
           proto = {}
           for x in selected:
             p = x.split('://', 1)[0]
             proto[p] = proto.get(p, 0) + 1
-          print(f'Published {len(selected)} shortlisted nodes; Asia-labelled={asia}; protocols={proto}')
+          print(f'Published {len(selected)} target-region nodes; protocols={proto}')
           PY
 
-          test -s output/asia-sub.txt
-          count=$(wc -l < output/asia-sub.txt)
+          test -s output/asia-v2.txt
+          count=$(wc -l < output/asia-v2.txt)
           test "$count" -ge 50
           test "$count" -le 300
 
       - name: Commit only when changed
         shell: bash
         run: |
-          if [ -z "$(git status --porcelain -- output/asia-sub.txt)" ]; then
+          if [ -z "$(git status --porcelain -- output/asia-v2.txt)" ]; then
             echo 'No change.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add output/asia-sub.txt
-          git commit -m 'chore: refresh Asia-first Shadowrocket shortlist'
+          git add output/asia-v2.txt
+          git commit -m 'chore: refresh target-region Shadowrocket shortlist'
           git push
