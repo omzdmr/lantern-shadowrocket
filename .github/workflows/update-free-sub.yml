@@ -31,7 +31,7 @@ jobs:
       - name: Commit only when changed
         shell: bash
         run: |
-          if git diff --quiet -- output/sub.txt; then
+          if [ -z "$(git status --porcelain -- output/sub.txt)" ]; then
             echo 'No change.'
             exit 0
           fi
